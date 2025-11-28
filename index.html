@@ -1,2 +1,552 @@
 # Index.html
-My website QR code scanner 
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QR Tools — Scanner & Generator</title>
+
+  <!-- Libraries -->
+  <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f5f7fb;
+      --card:#fff;
+      --muted:#6b7280;
+      --accent:#0f172a;
+      --primary:#0b63a5;
+      --success:#10b981;
+      --radius:12px;
+    }
+    [data-theme="dark"]{
+      --bg:#0b1220;
+      --card:#081020;
+      --muted:#9aa4b2;
+      --accent:#eef2ff;
+      --primary:#2ea0ff;
+      --success:#27d08a;
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background:var(--bg);
+      color:var(--accent);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      padding:12px;
+    }
+
+    .app{
+      max-width:980px;
+      margin:12px auto;
+      display:grid;
+      gap:12px;
+    }
+
+    header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .brand{display:flex;gap:12px;align-items:center}
+    .logo{width:48px;height:48px;border-radius:10px;background:var(--card);display:grid;place-items:center;font-weight:700;color:var(--primary);box-shadow:0 4px 14px rgba(2,6,23,0.06)}
+    h1{margin:0;font-size:18px}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+
+    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .btn{background:var(--primary);color:white;padding:10px 12px;border-radius:10px;border:0;cursor:pointer;text-decoration:none;display:inline-flex;gap:8px;align-items:center}
+    .btn.secondary{background:transparent;color:var(--primary);border:1px solid rgba(15,23,42,0.08)}
+    .btn.ghost{background:transparent;border:0;color:var(--muted)}
+    .card{background:var(--card);padding:12px;border-radius:var(--radius);box-shadow:0 6px 20px rgba(2,6,23,0.06)}
+
+    /* Layout */
+    .grid{display:grid;gap:12px}
+    @media(min-width:880px){
+      .grid.cols-2{grid-template-columns:1fr 420px}
+      .grid.cols-3{grid-template-columns:repeat(3,1fr)}
+    }
+
+    /* Scanner */
+    #video{width:100%;height:auto;border-radius:10px;background:#000;display:block}
+    #canvas{display:none}
+    .scanner-header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+    .small{font-size:13px;color:var(--muted)}
+
+    .result-box{margin-top:10px;padding:10px;border-radius:10px;background:linear-gradient(180deg, rgba(0,0,0,0.02), transparent);border:1px solid rgba(0,0,0,0.03)}
+    .result-text{word-break:break-word;font-weight:600}
+
+    /* Generator */
+    .qr-preview{width:100%;display:grid;place-items:center;padding:12px}
+    .qr-canvas{background:transparent;padding:8px;border-radius:10px}
+
+    /* History */
+    .history-list{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow:auto;padding-right:6px}
+    .history-item{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px;border-radius:8px;background:rgba(0,0,0,0.02)}
+    .meta{font-size:12px;color:var(--muted)}
+
+    footer{padding:12px;text-align:center;color:var(--muted);font-size:13px}
+
+    input, textarea, select{padding:10px;border-radius:10px;border:1px solid rgba(2,6,23,0.06);width:100%;background:transparent;color:inherit}
+    label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
+
+    .row{display:flex;gap:8px}
+    .row .col{flex:1}
+    .small-muted{font-size:12px;color:var(--muted)}
+
+    /* tiny icons */
+    .icon{width:18px;height:18px;display:inline-block}
+  </style>
+</head>
+<body>
+
+  <div class="app" id="app">
+
+    <header>
+      <div class="brand">
+        <div class="logo">QR</div>
+        <div>
+          <h1>QR Tools — Scanner & Generator</h1>
+          <p class="lead">Scan, generate, save history, and share — mobile friendly.</p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="themeToggle" class="btn secondary">Dark</button>
+        <button id="downloadAll" class="btn ghost" title="Export history (JSON)">Export History</button>
+        <button id="clearHistory" class="btn ghost" title="Clear all history">Clear History</button>
+      </div>
+    </header>
+
+    <!-- MAIN GRID: Scanner + Generator + History -->
+    <section class="grid cols-2">
+      <!-- Scanner + controls -->
+      <div class="card">
+        <div class="scanner-header">
+          <div>
+            <strong>QR Scanner</strong>
+            <div class="small">Use camera to scan QR codes. (HTTPS required)</div>
+          </div>
+          <div class="small-muted" id="camStatus">Ready</div>
+        </div>
+
+        <video id="video" playsinline></video>
+        <canvas id="canvas"></canvas>
+
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button id="startScan" class="btn">Start Scanning</button>
+          <button id="stopScan" class="btn secondary">Stop</button>
+          <button id="switchCam" class="btn secondary">Switch Camera</button>
+          <button id="torchBtn" class="btn secondary">Toggle Torch</button>
+        </div>
+
+        <div class="result-box" id="scanResultBox" style="display:none">
+          <div class="small">Scan result</div>
+          <div class="result-text" id="scanResult"></div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            <button id="copyScan" class="btn secondary">Copy</button>
+            <button id="shareScan" class="btn">Share</button>
+            <a id="openScan" class="btn" href="#" target="_blank" rel="noopener" style="display:none">Open Link</a>
+            <button id="saveScan" class="btn secondary">Save to History</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Generator + preview -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <strong>QR Generator</strong>
+            <div class="small">Create QR codes for URLs, text, phone, SMS or Wi-Fi.</div>
+          </div>
+          <div class="small-muted" id="genInfo"></div>
+        </div>
+
+        <div style="margin-top:10px">
+          <label>Type</label>
+          <select id="genType">
+            <option value="text">Text</option>
+            <option value="url" selected>URL</option>
+            <option value="tel">Phone (tel:)</option>
+            <option value="sms">SMS (sms:)</option>
+            <option value="wifi">Wi-Fi (WIFI:)</option>
+          </select>
+        </div>
+
+        <div id="typeFields" style="margin-top:10px">
+          <!-- text/url/tel/sms fields -->
+          <div id="field-text" class="field">
+            <label>Text / URL</label>
+            <textarea id="textInput" rows="3" placeholder="Enter text or URL"></textarea>
+          </div>
+
+          <div id="field-wifi" class="field" style="display:none">
+            <label>Wi-Fi SSID</label>
+            <input id="wifiSsid" placeholder="SSID" />
+            <label style="margin-top:8px">Password</label>
+            <input id="wifiPassword" placeholder="Password" />
+            <label style="margin-top:8px">Encryption</label>
+            <select id="wifiEnc"><option value="WPA">WPA/WPA2</option><option value="WEP">WEP</option><option value="nopass">None</option></select>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <button id="generateBtn" class="btn">Generate</button>
+          <button id="copyGen" class="btn secondary">Copy</button>
+          <button id="downloadGen" class="btn">Download</button>
+          <button id="saveGen" class="btn secondary">Save to History</button>
+        </div>
+
+        <div class="qr-preview" style="margin-top:12px">
+          <div id="qrContainer" class="qr-canvas"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- History -->
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><strong>Scan & Generate History</strong><div class="small">Saved locally on your device</div></div>
+        <div><span class="small-muted" id="historyCount">0 items</span></div>
+      </div>
+
+      <div style="margin-top:12px" class="history-list" id="historyList">
+        <!-- items -->
+      </div>
+    </section>
+
+    <footer>
+      Built with JavaScript • Camera & Clipboard APIs • Works best over HTTPS
+    </footer>
+  </div>
+
+  <!-- SCRIPT: full functionality -->
+  <script>
+  (function(){
+    // Elements
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const startScanBtn = document.getElementById('startScan');
+    const stopScanBtn = document.getElementById('stopScan');
+    const switchCamBtn = document.getElementById('switchCam');
+    const torchBtn = document.getElementById('torchBtn');
+
+    const scanResultBox = document.getElementById('scanResultBox');
+    const scanResultEl = document.getElementById('scanResult');
+    const copyScanBtn = document.getElementById('copyScan');
+    const shareScanBtn = document.getElementById('shareScan');
+    const openScanA = document.getElementById('openScan');
+    const saveScanBtn = document.getElementById('saveScan');
+
+    const genType = document.getElementById('genType');
+    const textInput = document.getElementById('textInput');
+    const wifiSsid = document.getElementById('wifiSsid');
+    const wifiPassword = document.getElementById('wifiPassword');
+    const wifiEnc = document.getElementById('wifiEnc');
+    const fieldWifi = document.getElementById('field-wifi');
+    const fieldText = document.getElementById('field-text');
+
+    const generateBtn = document.getElementById('generateBtn');
+    const copyGenBtn = document.getElementById('copyGen');
+    const downloadGenBtn = document.getElementById('downloadGen');
+    const saveGenBtn = document.getElementById('saveGen');
+    const qrContainer = document.getElementById('qrContainer');
+
+    const historyList = document.getElementById('historyList');
+    const historyCount = document.getElementById('historyCount');
+
+    const themeToggle = document.getElementById('themeToggle');
+    const appRoot = document.getElementById('app');
+    const camStatus = document.getElementById('camStatus');
+    const genInfo = document.getElementById('genInfo');
+    const downloadAll = document.getElementById('downloadAll');
+    const clearHistoryBtn = document.getElementById('clearHistory');
+
+    // State
+    let stream = null;
+    let scanning = false;
+    let useFront = false;
+    let currentTrack = null;
+    let torchOn = false;
+    let animationId = null;
+    let barcodeDetector = ('BarcodeDetector' in window) ? new BarcodeDetector({formats:['qr_code']}) : null;
+
+    // history (localStorage)
+    const STORAGE_KEY = 'qrtools_history_v1';
+    function loadHistory(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e){ return []; } }
+    function saveHistory(data){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+    function addHistory(item){
+      const arr = loadHistory();
+      arr.unshift(item); // newest first
+      saveHistory(arr);
+      renderHistory();
+    }
+    function clearHistory(){ localStorage.removeItem(STORAGE_KEY); renderHistory(); }
+
+    // Render history UI
+    function renderHistory(){
+      const arr = loadHistory();
+      historyList.innerHTML = '';
+      historyCount.textContent = arr.length + (arr.length===1?' item':' items');
+      if(arr.length===0){
+        historyList.innerHTML = '<div class="small-muted">No history yet. Scans and generates are saved here locally.</div>';
+        return;
+      }
+      arr.forEach((it, idx)=>{
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        const left = document.createElement('div');
+        left.style.flex = '1';
+        left.innerHTML = `<div style="font-weight:600">${it.type === 'scan' ? 'Scanned' : 'Generated'} • ${new Date(it.time).toLocaleString()}</div><div class="meta">${it.payload}</div>`;
+        const right = document.createElement('div');
+        right.style.display='flex';
+        right.style.gap='8px';
+        const openBtn = document.createElement('a');
+        openBtn.className='btn secondary';
+        openBtn.textContent='Open';
+        openBtn.href = it.payload;
+        openBtn.target='_blank';
+        openBtn.rel='noopener';
+        // Only show "Open" if it's a URL
+        try {
+          new URL(it.payload);
+          openBtn.style.display='inline-flex';
+        } catch(e){ openBtn.style.display='none'; }
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className='btn ghost';
+        copyBtn.textContent='Copy';
+        copyBtn.onclick = ()=>{ navigator.clipboard.writeText(it.payload).then(()=>alert('Copied')); };
+
+        const delBtn = document.createElement('button');
+        delBtn.className='btn ghost';
+        delBtn.textContent='Delete';
+        delBtn.onclick = ()=>{
+          const arr2 = loadHistory().filter((_,i)=>i!==idx);
+          saveHistory(arr2);
+          renderHistory();
+        };
+
+        right.appendChild(openBtn);
+        right.appendChild(copyBtn);
+        right.appendChild(delBtn);
+        item.appendChild(left);
+        item.appendChild(right);
+        historyList.appendChild(item);
+      });
+    }
+
+    // UTIL: detect URL
+    function isUrl(str){
+      try { new URL(str); return true; } catch(e) { return false; }
+    }
+
+    // SCANNER: Start
+    async function startScan(){
+      if(scanning) return;
+      camStatus.textContent = 'Requesting camera...';
+      const constraints = {
+        video: {
+          facingMode: useFront ? 'user' : 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      };
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        await video.play();
+        currentTrack = stream.getVideoTracks()[0];
+        scanning = true;
+        camStatus.textContent = 'Scanning...';
+        scanLoop();
+      } catch(err){
+        console.error('camera error', err);
+        camStatus.textContent = 'Camera unavailable';
+        alert('Unable to access camera. Make sure you are on HTTPS and allowed camera access.');
+      }
+    }
+
+    // scanner loop
+    async function scanLoop(){
+      if(!scanning) return;
+      if(video.readyState === video.HAVE_ENOUGH_DATA){
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+
+        // Try BarcodeDetector first (faster)
+        if(barcodeDetector){
+          try {
+            const barcodes = await barcodeDetector.detect(imageData);
+            if(barcodes && barcodes.length){
+              onDetected(barcodes[0].rawValue);
+              return;
+            }
+          } catch(e){
+            // fallback to jsQR
+          }
+        }
+
+        // fallback to jsQR
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        if(code && code.data){
+          onDetected(code.data);
+          return;
+        }
+      }
+      animationId = requestAnimationFrame(scanLoop);
+    }
+
+    function onDetected(text){
+      scanning = false;
+      camStatus.textContent = 'Detected';
+      // Stop camera but keep last frame visible
+      if(stream){
+        stream.getTracks().forEach(t=>t.stop());
+        stream = null;
+        currentTrack = null;
+      }
+      scanResultEl.textContent = text;
+      scanResultBox.style.display = 'block';
+      // show open link if url
+      if(isUrl(text)){
+        openScanA.href = text;
+        openScanA.style.display = 'inline-flex';
+      } else {
+        openScanA.style.display = 'none';
+      }
+      // auto-save short logic? we leave save to user
+    }
+
+    function stopScan(){
+      scanning = false;
+      if(animationId) cancelAnimationFrame(animationId);
+      if(stream){
+        stream.getTracks().forEach(t=>t.stop());
+        stream = null;
+        currentTrack = null;
+      }
+      camStatus.textContent = 'Stopped';
+    }
+
+    // switch camera
+    function switchCamera(){
+      useFront = !useFront;
+      stopScan();
+      setTimeout(()=>startScan(), 300);
+    }
+
+    // torch
+    async function toggleTorch(){
+      if(!currentTrack){
+        alert('Start camera first');
+        return;
+      }
+      const capabilities = currentTrack.getCapabilities();
+      if(!capabilities.torch){
+        alert('Torch not supported on this device');
+        return;
+      }
+      try {
+        torchOn = !torchOn;
+        await currentTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+        torchBtn.textContent = torchOn ? 'Torch: On' : 'Toggle Torch';
+      } catch(e){
+        console.error('torch error', e);
+      }
+    }
+
+    // COPY / SHARE for scan
+    copyScanBtn.addEventListener('click', ()=>{
+      const txt = scanResultEl.textContent || '';
+      if(!txt) return;
+      navigator.clipboard.writeText(txt).then(()=>alert('Copied to clipboard'));
+    });
+    shareScanBtn.addEventListener('click', async ()=>{
+      const txt = scanResultEl.textContent || '';
+      if(!txt) return;
+      if(navigator.share){
+        try {
+          await navigator.share({ text: txt });
+        } catch(e){}
+      } else {
+        alert('Share not supported. Copy instead.');
+      }
+    });
+    saveScanBtn.addEventListener('click', ()=>{
+      const txt = scanResultEl.textContent || '';
+      if(!txt) return;
+      addHistory({ type:'scan', payload: txt, time: Date.now() });
+      alert('Saved to history');
+    });
+
+    // GENERATOR: type change
+    genType.addEventListener('change', ()=>{
+      const v = genType.value;
+      if(v === 'wifi'){
+        fieldWifi.style.display='block';
+        fieldText.style.display='none';
+      } else {
+        fieldWifi.style.display='none';
+        fieldText.style.display='block';
+      }
+    });
+
+    // Generate content string
+    function buildPayload(){
+      const t = genType.value;
+      if(t === 'text' || t === 'url' || t === 'tel' || t === 'sms'){
+        const raw = textInput.value.trim();
+        if(!raw) return '';
+        if(t === 'tel') return 'tel:' + raw;
+        if(t === 'sms') return 'sms:' + raw;
+        return raw;
+      } else if(t === 'wifi'){
+        const ssid = wifiSsid.value.trim();
+        const pass = wifiPassword.value;
+        const enc = wifiEnc.value;
+        // WIFI:T:WPA;S:SSID;P:password;;
+        return `WIFI:T:${enc};S:${ssid};P:${pass};;`;
+      }
+      return '';
+    }
+
+    // render QR
+    async function renderQRCode(text){
+      if(!text) { qrContainer.innerHTML = '<div class="small-muted">Enter text and press Generate</div>'; return; }
+      qrContainer.innerHTML = '<canvas id="genCanvas"></canvas>';
+      const c = document.getElementById('genCanvas');
+      try {
+        await QRCode.toCanvas(c, text, { width: 320, margin: 2 });
+      } catch(e){
+        console.error('qrcode err', e);
+        qrContainer.innerHTML = '<div class="small-muted">Unable to generate QR</div>';
+      }
+    }
+
+    generateBtn.addEventListener('click', async ()=>{
+      const payload = buildPayload();
+      if(!payload){
+        alert('Enter valid content');
+        return;
+      }
+      await renderQRCode(payload);
+      genInfo.textContent = 'Generated ' + new Date().toLocaleTimeString();
+    });
+
+    copyGenBtn.addEventListener('click', async ()=>{
+      // copy payload text (not image)
+      const payload = buildPayload();
+      if(!payload) return alert('No QR to copy');
+      await navigator.clipboard.writeText(payload);
+      alert('P
